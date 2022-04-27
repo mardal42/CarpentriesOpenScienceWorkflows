@@ -1,0 +1,73 @@
+---
+title: "EEEEEEEEE testing"
+author: Muhaha
+output: github_document
+---
+
+Workflow to :
+
+1. Prepare R environment
+2. Download data
+3. Tidy and gap filling data
+4. Summary statistics report
+
+## 1. Prepare R environment
+
+Load relevant packages
+
+```{r setup}
+knitr::opts_chunk$set(echo=TRUE) #all code chunks will be shown in final file
+library (dataRetrieval)
+library (tidyverse)
+library (zoo)
+library (lubridate)
+```
+
+## 2. Download data
+
+We will use `readNWISdv` from package `dataRetrieval` package to get data stream data for USGS.
+
+```{r download}
+usgs_id <- "07141220" #gage id for Kansas River
+data_raw <- readNWISdv(siteNumbers = usgs_id, parameterCd = "00065", startDate = "2018-10-01", endDate = "2021-09-30")
+summary(data_raw)
+
+write.csv(data_raw, "data/Example_Raw.csv")
+```
+
+## 3. Tidy and gap filling data
+
+```{r clean_data}
+data_tidy <- data_raw %>% 
+  rename (stage_ft = X_00065_00003, stage_QAcode = X_00065_00003_cd) %>%
+  select(-agency_cd, -site_no)
+
+head (data_tidy)
+
+ggplot(data_tidy) + geom_line(aes(x=Date, y=stage_ft)) 
+
+#check for missing dates
+first_date <- min(data_tidy$Date)
+last_date <- max(data_tidy$Date)
+dates <- seq(first_date,last_date, by= "day")
+length(dates) == length(data_tidy$Date)
+
+#fill the gaps
+missing_dates <- dates[!(dates %in% data_tidy$Date)]
+new_data <- data.frame(Date=missing_dates, stage_ft=NA, stage_QAcode="Gapfill" )
+
+data_clean <- bind_rows(data_tidy, new_data) %>% arrange (Date)
+summary(data_clean)
+
+#fill the gaps with appoximation
+data_clean$stage_ft <- na.approx(data_clean$stage_ft)
+
+ggplot(data_clean, aes(x=Date, y=stage_ft, color= stage_QAcode)) + geom_point()
+
+write.csv(data_clean, "data/Example_Cleaned.csv")
+```
+
+## 4. Summary statistics report
+
+we analyzed data from USGS gage `r usgs_id`. During the period of record, the maximum stage was `r max (data_clean$stage_ft)` and the minimum stage was `r min (data_clean$stage_ft)`.
+There was total of `r length(missing_dates)` missing dates that we filled using linear interpolation.
